@@ -12,4 +12,5 @@ def grasp(pos, force, _time):
     :param _time:   duration.
     :return:
     """
-    
+    pass
+

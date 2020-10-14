@@ -9,7 +9,7 @@ import time
 import numpy as np
 import cv2
 
-def is_valid_density(cell_num_per_img, threshold):
+def is_valid_density(cell_num_per_img, threshold=1e3):
     if cell_num_per_img >= threshold:
         return True
     else:
