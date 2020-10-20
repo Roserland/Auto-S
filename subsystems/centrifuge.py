@@ -243,14 +243,15 @@ def synthetic_detection(area_pos_list, centri_pos=(800, 800), err_range=5):
 def main():
     color_img_dir = '../centri_doc/color/'
 
-    empty_img = cv2.imread('../centri_doc/color/00027.jpg')
-    tubes_img = cv2.imread('../centri_doc/color/00030.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
+    empty_img = cv2.imread('../datas/centrifuges/color/color_1603163326.673701.jpg')
+
     simple_tube_img = cv2.imread('../')
 
-    mm = find_holes_canny(centri_img=empty_img, center_pos=(824, 768))
+    # mm = find_holes_canny(centri_img=empty_img, center_pos=(824, 768))
 
-    # thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(824, 768), tailored_size=(1100, 1100))
-    thres_tubes = find_possible_tubes(centri_img=tubes_img, center_pos=(824, 768), tailored_size=(1100, 1100))
+    # thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(300, 240), tailored_size=(400, 400))
+    thres_tubes = find_possible_tubes(centri_img=tubes_img, center_pos=(390, 240), tailored_size=(425, 425))
 
 
 if __name__ == '__main__':

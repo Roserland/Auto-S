@@ -39,8 +39,8 @@ try:
         # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
         depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
 
-        # Stack both images horizontally
-        curr_time = str(time.time())
+        # Create a picture name using current time
+        curr_time = str(int(time.time()))
         images = np.hstack((color_image, depth_colormap))
         color_name = 'color_' + curr_time + '.jpg'
         depth_name = 'depth_' + curr_time + '.jpg'
