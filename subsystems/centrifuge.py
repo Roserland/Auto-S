@@ -44,7 +44,7 @@ def thres_img_for_holes(img, bgr_thres=None):
     :return:
     """
     if bgr_thres is None:
-        bgr_thres = [(50, 150), (35, 190), (0, 50)]
+        bgr_thres = [(0, 10), (0, 10), (0, 10)]
     b_thres, g_thres, r_thres = bgr_thres
     b_low, b_high = b_thres
     g_low, g_high = g_thres
@@ -69,7 +69,7 @@ def transfer_to_gray(img):
     return res
 
 
-def thres_img_for_tubes(img, bgr_thres=[(0, 185), (150, 255), (200, 255)]):
+def thres_img_for_tubes(img, bgr_thres=[(0, 120), (75, 150), (160, 255)]):
     """
     for better to localize the Orange Tubes, thresholds are suggested to be set at:
         blue:   0 - 180
@@ -135,7 +135,8 @@ def find_holes_canny(centri_img, center_pos, ):
 
 
 def find_possible_holes(centri_img, center_pos, nums=4,
-                        tube_volume=150, err_thres=5, tailored_size=(800, 800)):
+                        tube_volume=150, err_thres=5, tailored_size=(800, 800),
+                        max_hole_area = None):
     """
     找到一张图片中，可能的可以放入试管的槽位
     根据所需要的试管大小，给出对应孔洞像素坐标
@@ -153,10 +154,21 @@ def find_possible_holes(centri_img, center_pos, nums=4,
     tailored_img = cv2.GaussianBlur(src=tailored_img, ksize=(5, 5), sigmaX=1)
     # 中值滤波
     tailored_img = cv2.medianBlur(src=tailored_img, ksize=5)
-    thres_img = thres_img_for_holes(img=tailored_img, bgr_thres=[(50, 150), (35, 190), (0, 50)])
+    thres_img = thres_img_for_holes(img=tailored_img, bgr_thres=[(0, 10), (0, 13), (0, 10)])
     cv2.imwrite('../temps/holes_thres_img_0.jpg', thres_img)
 
     # 找到最大联通区域，并且绘制轮廓
+    # contours, max_idx, (p1, p2) = find_max_contours(bi_img=thres_img, src_img=tailored_img,
+    #                                                 _save_path='../temps/__with_rect.jpg')
+
+    contours, rect_points, rect_center_points = find_possible_areas(bi_img=thres_img, nums=nums,
+                                                                    min_area_pixels=200, max_area_pixels=1200)
+    draw_multi_rectangles(src_img=tailored_img, rect_points_list=rect_points)
+
+    print("Nums of detected contours: {}".format(len(contours)))
+    print(rect_points)
+    print("Bounding Rectangles' center points are")
+    print(rect_center_points)
 
     return thres_img
 
@@ -177,10 +189,13 @@ def find_possible_tubes(centri_img, center_pos, nums=4,
     thres_img = cv2.medianBlur(src=thres_img, ksize=5)
     cv2.imwrite('../temps/tubes_thres_img_0.jpg', thres_img)
 
-    contours, max_idx, (p1, p2) = find_max_contours(bi_img=thres_img, src_img=tailored_img,
-                                                    _save_path='../temps/__with_rect.jpg')
+    # in find_max_contours, OpenCV will draw max rectangle area
+    # contours, max_idx, (p1, p2) = find_max_contours(bi_img=thres_img, src_img=tailored_img,
+    #                                                 _save_path='../temps/__with_rect.jpg')
 
-    contours, rect_points, rect_center_points = find_possible_areas(bi_img=thres_img, nums=4, min_area_pixels=100)
+    contours, rect_points, rect_center_points = find_possible_areas(bi_img=thres_img, nums=nums, min_area_pixels=100)
+    draw_multi_rectangles(src_img=tailored_img, rect_points_list=rect_points)
+
     print("Nums of detected contours: {}".format(len(contours)))
     print(rect_points)
     print("Bounding Rectangles' center points are")
@@ -189,7 +204,7 @@ def find_possible_tubes(centri_img, center_pos, nums=4,
     return thres_img
 
 
-def find_possible_areas(bi_img, nums=4, min_area_pixels=100, ):
+def find_possible_areas(bi_img, nums=4, min_area_pixels=200, max_area_pixels=1150):
     _bi_img = bi_img[:, :]
     print(_bi_img.shape)
 
@@ -210,13 +225,23 @@ def find_possible_areas(bi_img, nums=4, min_area_pixels=100, ):
     # max_idx = np.argmax(area)
     # print("max area num is {}".format(area[max_idx]))
 
+    # filter area, using area pixel num
+    # maintain the areas whose pixels sum is between [min, max]
+
+
     area_idx = np.argsort(area)
     print("Area indexs are:", area_idx)
     print("After sorted, area pixel nums are:", area[area_idx])
     sorted_areas = area[area_idx]
 
+    valid_idx = (sorted_areas >= min_area_pixels) & (sorted_areas <= max_area_pixels)
+    sorted_areas = sorted_areas[valid_idx]
+
     print("Most possible {} areas are {}".format(nums, sorted_areas[-nums:]))
     contours = np.array(contours)[area_idx]
+    print("Length of contours {}".format(len(contours)))
+    contours = contours[valid_idx]
+    print("Length of contours {}".format(len(contours)))
     final_contours = contours[-nums:]
 
     rect_points = []
@@ -240,18 +265,34 @@ def synthetic_detection(area_pos_list, centri_pos=(800, 800), err_range=5):
     pass
 
 
+def draw_multi_rectangles(src_img, rect_points_list, save_path='../temps/__with_multi_rectangles.jpg'):
+    length = len(rect_points_list)
+
+    # draw rectangles
+    for i in range(length):
+        (pt1, pt2) = rect_points_list[i]
+
+        cv2.rectangle(img=src_img, pt1=pt1, pt2=pt2, color=(183, 152, 63), thickness=2)
+    s = cv2.imwrite(save_path, src_img)
+    if not s:
+        print('Not saved')
+        print("Please check if the path is right or if the directory exists")
+        raise ValueError
+
+
 def main():
     color_img_dir = '../centri_doc/color/'
 
     tubes_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
     empty_img = cv2.imread('../datas/centrifuges/color/color_1603163326.673701.jpg')
+    # empty_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
 
     simple_tube_img = cv2.imread('../')
 
     # mm = find_holes_canny(centri_img=empty_img, center_pos=(824, 768))
 
-    # thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(300, 240), tailored_size=(400, 400))
-    thres_tubes = find_possible_tubes(centri_img=tubes_img, center_pos=(390, 240), tailored_size=(425, 425))
+    thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(390, 240), tailored_size=(425, 425), nums=8)
+    # thres_tubes = find_possible_tubes(centri_img=tubes_img, center_pos=(390, 240), tailored_size=(425, 425))
 
 
 if __name__ == '__main__':

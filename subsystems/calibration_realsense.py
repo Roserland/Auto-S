@@ -9,7 +9,7 @@ import argparse
 import pandas as pd
 
 class CameraCalibrator(object):
-    def __init__(self, image_size:tuple):
+    def __init__(self, image_size: tuple):
         super(CameraCalibrator, self).__init__()
         self.image_size = image_size
         self.matrix = np.zeros((3, 3), np.float)
@@ -128,7 +128,7 @@ class CameraCalibrator(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image_size', type= str, default='3072x4096', help='height*width of image')
+    parser.add_argument('--image_size', type= str, default='640x480', help='height*width of image')
     parser.add_argument('--mode', type=str, choices=['calibrate', 'rectify_image'], default='rectify_image', help='to calibrate or rectify')
     parser.add_argument('--square', default=21, type=int, help='size of chessboard square, by mm')
     parser.add_argument('--corner', type=str, default='6x9', help='height*width of chessboard corner')
@@ -138,8 +138,8 @@ if __name__ == '__main__':
     parser.add_argument('--camera_id', type=int, help='camera_id, default=0', default=0)
     args = parser.parse_args()
     calibrator = None
-    # python3 calibration.py --image_size 4096x3072 --mode calibrate --corner 9x6 --square 21
-    # python3 calibration.py --image_size 4096x3072 --mode rectify_image --camera_id 0
+    # python3 calibration_realsense.py --image_size 4096x3072 --mode calibrate --corner 9x6 --square 21
+    # python3 calibration_realsense.py --image_size 4096x3072 --mode rectify_image --camera_id 0
     try:
         image_size = tuple(int(i) for i in args.image_size.split('x'))
         calibrator = CameraCalibrator(image_size)
