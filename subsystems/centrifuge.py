@@ -13,6 +13,8 @@
 
 import numpy as np
 import cv2
+import os, yaml
+from subsystems.calibration_realsense import CameraCalibrator
 from subsystems.functionFiles import find_max_contours, find_min_rec, draw_rectangle
 
 
@@ -201,7 +203,7 @@ def find_possible_tubes(centri_img, center_pos, nums=4,
     print("Bounding Rectangles' center points are")
     print(rect_center_points)
 
-    return thres_img
+    return thres_img, rect_points, rect_center_points
 
 
 def find_possible_areas(bi_img, nums=4, min_area_pixels=200, max_area_pixels=1150):
@@ -279,11 +281,54 @@ def draw_multi_rectangles(src_img, rect_points_list, save_path='../temps/__with_
         print("Please check if the path is right or if the directory exists")
         raise ValueError
 
+# def undistortion(img,):
+#     carlibrator = CameraCalibrator()
+
+def load_camera_params(param_file: str = 'camera_params.yaml'):
+    if not os.path.exists(param_file):
+        print("File {} does not exist.", format(param_file))
+        exit(-1)
+    with open(param_file, 'r') as f:
+        param = yaml.load(f)
+    matrix = np.array(param['camera_matrix'])
+    new_camera_matrix = np.array(param['new_camera_matrix'])
+    dist = np.array(param['camera_distortion'])
+    image_size = (param['image height'], param['image width'])
+    roi = np.array(param['roi'])
+
+    return [matrix, new_camera_matrix, dist, image_size, roi]
+
+def undistortion(img, camera_params):
+    """
+
+    :param img:
+    :param camera_params:
+    :return:
+    """
+    [matrix, new_camera_matrix, dist, image_size, roi] = camera_params
+    if not isinstance(img, np.ndarray):
+        AssertionError("Image type '{}' is not numpy.ndarray.".format(type(img)))
+    img_w, img_h, img_c = img.shape
+
+    dst = cv2.undistort(img, matrix, dist, None, new_camera_matrix)
+    x, y, w, h = roi
+    dst = dst[y:y + h, x:x + w]
+    dst = cv2.resize(dst, (img_h, img_w), interpolation=cv2.INTER_CUBIC)
+    return dst
+
+def recover_pixel_coords(points, center_pos=(390, 240), tailored_size=(425, 425)):
+    w, h = tailored_size
+    t_cen = (w/2, h/2)
+    x = points[0] - t_cen[0] + center_pos[0]
+    y = points[1] - t_cen[1] + center_pos[1]
+    return (x, y)
 
 def main():
     color_img_dir = '../centri_doc/color/'
 
-    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163102.1412394.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163004.5233963.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603956227.jpg')
     empty_img = cv2.imread('../datas/centrifuges/color/color_1603163326.673701.jpg')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
 
@@ -291,8 +336,20 @@ def main():
 
     # mm = find_holes_canny(centri_img=empty_img, center_pos=(824, 768))
 
-    thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(390, 240), tailored_size=(425, 425), nums=8)
-    # thres_tubes = find_possible_tubes(centri_img=tubes_img, center_pos=(390, 240), tailored_size=(425, 425))
+    # thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(390, 240), tailored_size=(425, 425), nums=8)
+    thres_tubes, rect_points, rect_center_points = find_possible_tubes(centri_img=tubes_img, center_pos=(360, 240),
+                                                                       tailored_size=(425, 425))
+
+    r_points = []
+    for item in rect_center_points:
+        r_points.append(recover_pixel_coords(points=item, center_pos=(360, 240), tailored_size=(425, 425)))
+    print(r_points)
+    # camera_params = load_camera_params()
+    # test_dst = undistortion(img=tubes_img, camera_params=camera_params)
+
+    # cv2.imwrite('../temps/test_undst_img_1.jpg', test_dst)
+
+
 
 
 if __name__ == '__main__':

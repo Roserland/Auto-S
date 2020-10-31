@@ -540,7 +540,7 @@ if __name__ == '__main__':
 
     print("\n****************************\n")
     print("try to visualize the co-ordinates")
-    calibrator.get_extrinsic_params(chess_img_path='../datas/carlibration/chessboard_final.jpg')
+    calibrator.get_extrinsic_params(chess_img_path='../datas/carlibration/color/chessboard_final.jpg')
 
 
     # cammer_mtx = calibrator.matrix
