@@ -14,6 +14,7 @@
 import numpy as np
 import cv2
 import os, yaml
+import pandas as pd
 from subsystems.calibration_realsense import CameraCalibrator
 from subsystems.functionFiles import find_max_contours, find_min_rec, draw_rectangle
 
@@ -21,6 +22,10 @@ from subsystems.functionFiles import find_max_contours, find_min_rec, draw_recta
 # 当前可用的 无试管插入           图片编号为   00024-00028
 # 当前可用的 相同(绿色)rotor的    图片编号为   00029-00037, 27,28为纯绿色rotor
 # 当前可用的 较复杂场景下          图片编号为   00018-00023
+
+class Centrifuge(object):
+    def __init__(self, crop_center, crop_size, ):
+        self.crop_center = crop_center
 
 def centrifuge_capture(device_num=0, temp_dir='../temps'):
     """
@@ -71,7 +76,7 @@ def transfer_to_gray(img):
     return res
 
 
-def thres_img_for_tubes(img, bgr_thres=[(0, 120), (75, 150), (160, 255)]):
+def thres_img_for_tubes(img, bgr_thres=[(0, 50), (40, 150), (85, 210)]):
     """
     for better to localize the Orange Tubes, thresholds are suggested to be set at:
         blue:   0 - 180
@@ -172,7 +177,8 @@ def find_possible_holes(centri_img, center_pos, nums=4,
     print("Bounding Rectangles' center points are")
     print(rect_center_points)
 
-    return thres_img
+    # return thres_img
+    return contours, rect_points, rect_center_points
 
 
 def find_possible_tubes(centri_img, center_pos, nums=4,
@@ -253,7 +259,7 @@ def find_possible_areas(bi_img, nums=4, min_area_pixels=200, max_area_pixels=115
         x, y, w, h = cv2.boundingRect(con)
         p1 = (x, y)
         p2 = (x + w, y + h)
-        center_point = (x + w // 2, y + h // 2)
+        center_point = (x + w / 2, y + h / 2)
         rect_points.append((p1, p2))
         rect_center_points.append(center_point)
 
@@ -328,7 +334,8 @@ def main():
 
     tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163102.1412394.jpg')
     tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163004.5233963.jpg')
-    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603956227.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/color_1604566870.jpg')
+    # empty_img = cv2.imread('../datas/centrifuges/color/color_1604566870.jpg')
     empty_img = cv2.imread('../datas/centrifuges/color/color_1603163326.673701.jpg')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
 
@@ -336,18 +343,25 @@ def main():
 
     # mm = find_holes_canny(centri_img=empty_img, center_pos=(824, 768))
 
-    # thres_holes = find_possible_holes(centri_img=empty_img, center_pos=(390, 240), tailored_size=(425, 425), nums=8)
-    thres_tubes, rect_points, rect_center_points = find_possible_tubes(centri_img=tubes_img, center_pos=(360, 240),
-                                                                       tailored_size=(425, 425))
+    thres_holes, rect_points, rect_center_points = find_possible_holes(centri_img=empty_img, center_pos=(203, 222),
+                                                                       tailored_size=(406, 406), nums=8)
+    # thres_tubes, rect_points, rect_center_points = find_possible_tubes(centri_img=tubes_img, center_pos=(203, 222),
+    #                                                                    tailored_size=(406, 406))
 
+    # 360.75, 243.82
     r_points = []
     for item in rect_center_points:
-        r_points.append(recover_pixel_coords(points=item, center_pos=(360, 240), tailored_size=(425, 425)))
+        r_points.append(recover_pixel_coords(points=item, center_pos=(203, 222), tailored_size=(406, 406)))
     print(r_points)
     # camera_params = load_camera_params()
     # test_dst = undistortion(img=tubes_img, camera_params=camera_params)
 
     # cv2.imwrite('../temps/test_undst_img_1.jpg', test_dst)
+
+
+
+#TODO: When find the holes, try to set a reasonable area pixels, to filter the 'unvalid' holes
+#  which are too large or small
 
 
 

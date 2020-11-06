@@ -173,14 +173,8 @@ class CameraCalibrator(object):
             print("Calclulated Scale Factor : {}\n".format(s))
         else:
             s = zConst_C
-        x = (image_point[0, 0] - self.matrix[0, 2]) / self.matrix[0, 0]
-        y = (image_point[0, 1] - self.matrix[1, 2]) / self.matrix[1, 1]
-        r2 = x * x + y * y
-        k1, k2, k3, p1, p2 = self.dist[0]
-        x = x * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
-        y = y * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p2 * x * y + p1 * (r2 + 2 * y * y)
-        x = x * self.matrix[0, 0] + self.matrix[0, 2]
-        y = y * self.matrix[1, 1] + self.matrix[1, 2]
+        x = image_point[0, 0]
+        y = image_point[0, 1]
         image_point = np.array([[x], [y], [1]])
         wc_point = np.dot(np.linalg.inv(revc_M1), (np.linalg.inv(self.matrix).dot(image_point) * s - self.tvec))
         return wc_point
@@ -224,6 +218,7 @@ c_w = 6 # corner width
 square = 24
 img_for_extrinsic = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-5.jpg'
 temp_save_dir = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/temps/chessboards/for_calibrations/'
+
 
 
 def carlibration(imgs_dir=imgs_dir_for_calcu_intrinsic, world_points=None, c_w=6, c_h=9, square_size=24,
@@ -463,6 +458,33 @@ def construct_chessboard_coord(aim_img_point, obj_corners, chess_img_corners,
 
     return m_res
 
+
+def img2world(img_point, camera_mtx,
+              rotation_mtx,translation_mtx,
+              z_constS):
+    """
+    without distortion, just a test
+    :param img_point:
+    :param zConst_s:
+    :return:
+    """
+    if len(img_point) == 2:
+        _img_point = np.array([[img_point[0], img_point[1], 1]])
+    elif len(img_point) == 3:
+        _img_point = np.array([img_point])
+    else:
+        print("please check the image coordinates")
+        raise ValueError
+    rotation_mtx_I = np.linalg.inv(rotation_mtx)
+    camera_mtx_I = np.linalg.inv(camera_mtx)
+    translation_mtx = np.array(translation_mtx)
+
+    temp_mtx = np.dot(camera_mtx_I, _img_point.T) * z_constS - translation_mtx
+
+    world_3d = rotation_mtx_I.dot(temp_mtx)
+
+    return world_3d
+
 def coord_spanning(aim_point: np.array, origin: np.array, coefficient: float=0.849):
     """
 
@@ -472,11 +494,17 @@ def coord_spanning(aim_point: np.array, origin: np.array, coefficient: float=0.8
     :return:
     """
     vector = aim_point - origin
-    res_pos = vector / coeffi + origin
+    res_pos = vector / coefficient + origin
     return res_pos
+
+
 
 if __name__ == '__main__':
     mtx, dist = carlibration()
+
+    mtx = np.array([[612.204, 0, 328.054],
+                    [0, 611.238, 234.929],
+                    [0,  0,  1]])
     # calibration over
     df = pd.read_csv('/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/标定new.csv',
                      header=None)
@@ -487,12 +515,15 @@ if __name__ == '__main__':
     # [[0.99710845, 0.07508602, -0.01169705]
     #  [-0.06578662,  0.92996514,  0.36171392]
     # [0.03803751, -0.3598985, 0.93221576]]
+    measured_obj_corners_2D = np.array(df.values[:, 12:15].astype(np.float) * 1000)
     objp[:, :2] = np.mgrid[0:c_h, 0:c_w].T.reshape(-1, 2) * square
+    objp = measured_obj_corners_2D.reshape(objp.shape)
 
     axis = np.float32([[1 * square, 0, 0], [0*square, 1*square, 0], [0, 0, -3 * square]]).reshape(-1, 3)
 
     # calculate extrinsic parameters
-    for fname in glob.glob(os.path.join(imgs_dir_for_calcu_extrinsic, 'v*5.jpg')):
+    depth = np.load("/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-6.npy")
+    for fname in glob.glob(os.path.join(imgs_dir_for_calcu_extrinsic, 'v*6.jpg')):
         print(fname)
         img = cv2.imread(fname)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -510,9 +541,10 @@ if __name__ == '__main__':
             _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mtx, dist)
 
             r_mtx, _ = cv2.Rodrigues(rvecs)
+            t_mtx = tvecs
             print("\nRotation matrix and Translation matrix:")
             print(r_mtx)
-            print(tvecs)
+            print(t_mtx)
 
             # project 3D points to image plane
             imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
@@ -528,6 +560,8 @@ if __name__ == '__main__':
                 cv2.imwrite(os.path.join(temp_save_dir, fname[:6] + '.png'), img)
         else:
             print("Cannot get right return value")
+
+
 
     test_coods = coordinate_transformer_2D(aim_img_point=corners2[47].ravel(),
                               image_basic_points=[corners2[0], corners2[1], corners2[9]],
@@ -598,92 +632,66 @@ if __name__ == '__main__':
 
     df = pd.read_csv("/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/标定new.csv", header=None)
     measured_obj_corners_2D = np.array(df.values[:, 12:15].astype(np.float) * 1000)
+    __pnp_points = []
+    for i in range(len(corners2)):
+        img_point = corners2[i]
+        # temp_depth = depth[int(img_point[0, 1]), int(img_point[0, 0])]
+        # real_height = measured_obj_corners_2D[i][2]
+        # print(tvecs[2] - temp_depth, real_height)
+
+        pnp_point = img2world(img_point=img_point[0], camera_mtx=mtx, rotation_mtx=r_mtx,
+                              translation_mtx=t_mtx,
+                              z_constS=depth[int(img_point[0, 1]), int(img_point[0, 0])])
+        __pnp_points.append(pnp_point)
+    __pnp_points = np.array(__pnp_points)
+
     # measured_obj_corners_2D[:, 2] = measured_obj_corners_2D[:, 2].mean()
-    measured_4_points = [measured_obj_corners_2D[0], measured_obj_corners_2D[8],
-                         measured_obj_corners_2D[45], measured_obj_corners_2D[53],]
-    print("four measured points:\n", measured_4_points)
 
-    print('measuring ********************************************')
-    measure_res = []
-    for i in range(54):
-        point = corners2[i]
-        # calculate actual error between Franka coordinates and tested coordinates
-        test_coods = construct_chessboard_coord(aim_img_point=point, obj_corners=objp, chess_img_corners=corners2,
-                                                measured_points=measured_obj_corners_2D, using_coords_num=4)
-        measure_res.append(test_coods.tolist())
-        print(measured_obj_corners_2D[i])
-    measure_res = np.array(measure_res)
-    print("measured error with ")
-    print(np.round(measure_res - measured_obj_corners_2D))
+    # for img_point in corners2:
+    #     print(img_point)
+    diffs = []
+    for i in range(len(__pnp_points)):
+        __mea = measured_obj_corners_2D[i].ravel()
+        __cal = __pnp_points[i].ravel()
+        diff = (__cal - __mea)
+        print("diff [{}]:\t".format(i), np.round(diff)[:2])
+        diffs.append(diff)
+    # print(np.round(diffs))
 
-    detected_tubes_center = [(190.0, 366.0), (334.0, 222.0), (52.0, 217.0), (193.0, 72.0)]
-    #                              4            1               3               2
-    detected_tubes_center = [(334.0, 222.0), (193.0, 72.0), (52.0, 217.0), (190.0, 366.0)]
-    labeled_tubes_center = [(334.17, 222.30), (191.14, 71.04), (48.10, 218.51), (187.34, 367.87)]
-    # detected_tubes_center = [(190, 347), (334, 203), (52, 198), (193, 53)]
-    center_img_pos = (180.37974683544303, 219.13924050632912)
-    center_mea_pos = construct_chessboard_coord(aim_img_point=center_img_pos, obj_corners=objp, chess_img_corners=corners2,
-                                                measured_points=measured_obj_corners_2D, using_coords_num=4)
-    tube_coords = []
-    for tube_center in labeled_tubes_center:
-        tube_coord = construct_chessboard_coord(aim_img_point=tube_center, obj_corners=objp, chess_img_corners=corners2,
-                                                measured_points=measured_obj_corners_2D, using_coords_num=4)
-        tube_coords.append(tube_coord.tolist())
-    labeled_coords = np.array(tube_coords)
-    print("labeled tubes' coords are:\n", np.array(tube_coords))
+    tubes_real_pos = np.array(pd.read_csv("/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/tube_coord.csv", header=None)) * 1000
+    tubes_real_pos = tubes_real_pos[:, 12:15]
+    center = tubes_real_pos[0]
+    tubes_real_pos = tubes_real_pos[1:5]
+    tubes_height = tubes_real_pos[:, 2]
+    tubes_mean_height = np.mean(tubes_height)
+    print("tubes mean height: ", tubes_mean_height)
 
-    tube_coords = []
-    for tube_center in detected_tubes_center:
-        tube_coord = construct_chessboard_coord(aim_img_point=tube_center, obj_corners=objp, chess_img_corners=corners2,
-                                                measured_points=measured_obj_corners_2D, using_coords_num=4)
-        tube_coords.append(tube_coord.tolist())
-    calcued_coords = np.array(tube_coords)
-    print("detected tubes' coords are:\n", np.array(tube_coords))
+    # (362.5, 245.5), (291.0, 76.0), (193.5, 319.5), (122.0, 149.0)
+    #       1              2            4                3
+    tubes_detected_img_pos = [(362.5, 245.5), (291.0, 76.0), (122.0, 149.0), (193.5, 319.5)]
 
-    real_tube_coords = pd.read_csv(
-        "/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/tube_coord.csv",
-        header=None)
-    center = np.array(real_tube_coords)[0, 12:15] * 1000
-    print("calculated center pos:", center_mea_pos)
-    real_tube_coords = np.array(real_tube_coords)[1:5, 12:15] * 1000
-    print("real center pos", center)
-    center_world_offset = center_mea_pos - center
-    print("center coords offset:", center_world_offset)
+    # tubes_depth = np.load("/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/datas/centrifuges/color/depth_1604562951.npy")
+    center_img_pos = (236, 194)
 
-    print("real tubes' pos")
-    print(real_tube_coords)
+    # calculate centrifuge center position
+    cal_center_pos = img2world(img_point=center_img_pos, camera_mtx=mtx, rotation_mtx=r_mtx,
+                              translation_mtx=t_mtx,
+                              z_constS=tvecs[2] - tubes_mean_height)
+    cal_center_pos = cal_center_pos.ravel()
+    print("center diff:", cal_center_pos - center)
+
+    tubes_detected_cal_pos = []
+    for img_pos in tubes_detected_img_pos:
+        temps = img2world(img_point=img_pos, camera_mtx=mtx, rotation_mtx=r_mtx,
+                              translation_mtx=t_mtx,
+                              z_constS=tvecs[2] - tubes_mean_height)
+        tubes_detected_cal_pos.append(temps.ravel().tolist())
+    tubes_detected_cal_pos = np.array(tubes_detected_cal_pos)
+    print(tubes_detected_cal_pos - tubes_real_pos)
+
+    tubes_detected_cal_pos[:, 2] = tubes_mean_height
+    print(tubes_detected_cal_pos)
 
 
-    # the bellow will calulate a span coefficient
-    # to reduce the deviation
+    # print(tubes_detected_cal_pos)
 
-    # maybe there need 2 coefficient at both X and Y axis.
-    # TODO: calculate 2 coefficients at X and Y axis.
-    # 将摄像头视野与离心机中心对齐
-    print("\n=====================================")
-    labeled_bias_2d = (labeled_coords - center)[:, :2]
-    real_bias_2d = (real_tube_coords - center)[:, :2]
-    coeffi = 0
-    for i in range(len(labeled_coords)):
-        print(labeled_bias_2d[i], '\t', real_bias_2d[i])
-        len_label = np.sqrt(labeled_bias_2d[i].dot(labeled_bias_2d[i].T))
-        len_calcu = np.sqrt(real_bias_2d[i].dot(real_bias_2d[i].T))
-        print(len_label, len_calcu, '\t', len_label/len_calcu)
-        cosin = labeled_bias_2d[i].dot(real_bias_2d[i]) / (len_calcu * len_label)
-        print("cosin coefficient:", cosin)
-        coeffi += (len_label/len_calcu)
-    coeffi = coeffi / len(labeled_coords)
-    print("average coefficient: ", coeffi)
-
-    tube_coords = []
-    for tube_center in detected_tubes_center:
-        tube_coord = construct_chessboard_coord(aim_img_point=tube_center, obj_corners=objp, chess_img_corners=corners2,
-                                                measured_points=measured_obj_corners_2D, using_coords_num=4)
-        tube_coord = coord_spanning(aim_point=tube_coord, origin=center_mea_pos, coefficient=0.849)
-        tube_coords.append(tube_coord.tolist())
-    new_detected_coords = np.array(tube_coords)
-    print("corrected detected coords:\n", new_detected_coords)
-    print("real tubes' pos")
-    print(real_tube_coords)
-    print("corrected diff:\n")
-    print(real_tube_coords - new_detected_coords)

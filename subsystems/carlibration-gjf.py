@@ -101,8 +101,8 @@ class CameraCalibrator(object):
 
     def _draw(self, img, obj_corners, img_corners=None, save_path='/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/coordinate.jpg'):
         print('IN DRAW- FUNCTIONS\n')
-        # corners = np.vstack([obj_corners[0], obj_corners[28], obj_corners[36], obj_corners[53]])
-        corners = np.vstack([obj_corners[0], [3, 0, 0], [0, 3, 0], [0, 0, -3]])
+        corners = np.vstack([obj_corners[0], obj_corners[2*9], obj_corners[4], obj_corners[5]])
+        # corners = np.vstack([obj_corners[0], [3, 0, 0], [0, 3, 0], [0, 0, -3]])
         corner_center = obj_corners[0]
         corner_z = np.array([corner_center[0], corner_center[1], corner_center[2] + 96])
         corner_x = corners[2]   #fzw
@@ -147,49 +147,6 @@ class CameraCalibrator(object):
         obj_corner = np.zeros([corner_height * corner_width, 3], np.float32)
         obj_corner[:, :2] = np.mgrid[0:corner_width, 0:corner_height].T.reshape(-1, 2)  # (w*h)*2
         return obj_corner * square_size
-
-    def _calibrate_single(self, img_path, corner_width=9, corner_height=6, square_size=24):
-        chess_img = cv2.imread(img_path)
-        objs_corner = []  # 3d point in real world space.
-        imgs_corner = []  # 2d point in image plane.
-
-        # 设置寻找亚像素角点的参数，采用的停止准则是最大循环次数 30 和最大误差容限 0.001
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-        # 获取标定板角点的位置
-        obj_corner = self._cal_real_corner(corner_width, corner_height, square_size)
-
-        assert (chess_img.shape[0] == self.image_size[0] and chess_img.shape[0] == self.image_size[0]), \
-            "Image size does not match the given value {}.".format(self.image_size)
-        # to gray
-        gray = cv2.cvtColor(chess_img, cv2.COLOR_BGR2GRAY)
-        # find chessboard corners
-        ret, img_corners = cv2.findChessboardCorners(gray, (corner_width, corner_height))
-
-        # If found, add object points, image points (after refining them).
-        if ret:
-            objs_corner.append(obj_corner)
-            img_corners = cv2.cornerSubPix(gray, img_corners, winSize=(square_size // 2, square_size // 2),
-                                           zeroZone=(-1, -1), criteria=criteria)
-            imgs_corner.append(img_corners)
-            # import pdb; pdb.set_trace()
-
-            # Draw and display the corners.
-            cv2.drawChessboardCorners(gray, (corner_width, corner_height), img_corners, ret)
-            if not os.path.exists('./chessboard'):
-                os.makedirs('./chessboard')
-            cv2.imwrite(os.path.join('./chessboard', img_path.split('/')[-1]), gray)
-        else:
-            print("Fail to find corners in {}.".format(img_path))
-
-        # calibration
-        ret, matrix, dist, rvecs, tveces = cv2.calibrateCamera(objs_corner, imgs_corner, gray.shape[::-1],
-                                                                         None, None)
-        print("carlibrate single:\n", self.matrix)
-        print("carlibrate single:\n", self.dist)
-        self.rotation_mtx, _ = cv2.Rodrigues(rvecs[0])
-        self.translation_mtx = tveces[0]
-
-        return [rvecs[0], tveces[0]]
 
     def _calibrate_camera_intrinsic(self, file_path, obj_corners, \
                                     corner_width=9, corner_height=6, square_size=24, criteria=None):
@@ -249,7 +206,7 @@ class CameraCalibrator(object):
         word_poionts: the designed world coordinate system.
         """
         _, self.rvec, self.tvec, inliers = cv2.solvePnPRansac(world_points, image_points, self.matrix, self.dist,
-                                                              flags=cv2.SOLVEPNP_UPNP,
+                                                              # flags=cv2.SOLVEPNP_UPNP,
                                                               # useExtrinsicGuess=True,
                                                               )
         # 获得的旋转矩阵是向量，是3×1的矩阵，想要还原回3×3的矩阵，需要罗德里格斯变换Rodrigues
@@ -308,16 +265,20 @@ class CameraCalibrator(object):
             print("Calclulated Scale Factor : {}\n".format(s))
         else:
             s = zConst_C
-        x = (image_point[0, 0] - self.matrix[0, 2]) / self.matrix[0, 0]
-        y = (image_point[0, 1] - self.matrix[1, 2]) / self.matrix[1, 1]
-        r2 = x * x + y * y
-        k1, k2, k3, p1, p2 = self.dist[0]
-        x = x * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
-        y = y * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p2 * x * y + p1 * (r2 + 2 * y * y)
-        x = x * self.matrix[0, 0] + self.matrix[0, 2]
-        y = y * self.matrix[1, 1] + self.matrix[1, 2]
+            print("s", s)
+        # x = (image_point[0, 0] - self.matrix[0, 2]) / self.matrix[0, 0]
+        # y = (image_point[0, 1] - self.matrix[1, 2]) / self.matrix[1, 1]
+        # r2 = x * x + y * y
+        # k1, k2, k3, p1, p2 = self.dist[0]
+        # x = x * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
+        # y = y * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2) + 2 * p2 * x * y + p1 * (r2 + 2 * y * y)
+        # x = x * self.matrix[0, 0] + self.matrix[0, 2]
+        # y = y * self.matrix[1, 1] + self.matrix[1, 2]
+        x = image_point[0, 0]
+        y = image_point[0, 1]
         image_point = np.array([[x], [y], [1]])
         wc_point = np.dot(np.linalg.inv(revc_M1), (np.linalg.inv(self.matrix).dot(image_point) * s - self.tvec))
+        # wc_point = np.dot(np.linalg.inv(revc_M1), (np.linalg.inv(self.matrix).dot(image_point.T) * s - self.tvec))
         return wc_point
 
     def _image2world_affine(self, image_point=None, zConst_C=None):
@@ -380,67 +341,48 @@ class CameraCalibrator(object):
 
         return world_3d
 
-    def inpaint(self, img, missing_value=0):
-        """
-        Inpaint missing values in depth image. [H, W]
-        :param missing_value: Value to fill in teh depth image.
-        """
-        # cv2 inpainting doesn't handle the border properly
-        # https://stackoverflow.com/questions/25974033/inpainting-depth-map-still-a-black-image-border
-        img = np.expand_dims(img, axis=2)
-        img = cv2.copyMakeBorder(img, 1, 1, 1, 1, cv2.BORDER_DEFAULT)
-        mask = (img == missing_value).astype(np.uint8)
-
-        # Scale to keep as float, but has to be in bounds -1:1 to keep opencv happy.
-        scale = np.abs(img).max()
-        img = img.astype(np.float32) / scale  # Has to be float32, 64 not supported.
-        img = cv2.inpaint(img, mask, 1, cv2.INPAINT_NS)
-        # img = cv2.inpaint(img, mask, 1, cv2.INPAINT_TELEA)
-
-        # Back to original size and value range.
-        img = img[1:-1, 1:-1]
-        img = img * scale
-        return img
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_size', type=str, default='480x640', help='height * width of image')
     parser.add_argument('--square', default=25, type=int, help='size of chessboard square, by mm')
     parser.add_argument('--corner', type=str, default='6x9', help='height * width of chessboard corner')
-    parser.add_argument('--image_data', type=str, default='../datas/carlibration/color')
+    parser.add_argument('--image_data', type=str, default='../datas/carlibration/for_intrinsic')
     args = parser.parse_args()
     calibrator = None
 
     image_size = tuple(int(i) for i in args.image_size.split('x'))
     corner = tuple(int(i) for i in args.corner.split('x'))
 
-    image_path = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-0.jpg'
-    depth_path = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-0.npy'
+    image_path = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-5.jpg'
+    depth_path = '/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/v-chessboard-5.npy'
 
     ## prepare data to compute camera extrinsic.
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    df = pd.read_csv('/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/标定new.csv', header=None)
+    df = pd.read_csv('/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/inner_centri标定.csv', header=None)
     obj_corners = np.array(df.values[:, 12:15].astype(np.float) * 1000)
+    obj_corners = obj_corners[:27]
     # obj_corners[:, -1] = 324.0  # fzw, consider the chessboard at zero plane
     # obj_corners = obj_corners - obj_corners[0]
     print(obj_corners.shape)
-    print(obj_corners[:5])
     _obj_corners = deepcopy(obj_corners)
 
     # objp = np.zeros((6 * 9, 3), np.float32)
     # objp[:, :2] = np.mgrid[0:9, 0:6].T.reshape(-1, 2)
     ## be careful about the corresponding relationship between A to B.
     # obj_corners = obj_corners[::-1, :]
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 0.001)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     ret, img_corners = cv2.findChessboardCorners(gray, (corner[1], corner[0]), None)
-    img_corners = cv2.cornerSubPix(gray, img_corners, winSize=(args.square // 2, args.square // 2),
+    img_corners = cv2.cornerSubPix(gray, img_corners,
+                                   # winSize=(args.square // 2, args.square // 2),
+                                   winSize=(11, 11),
                                    zeroZone=(-1, -1), criteria=criteria)
-    print("img_corners-0:\n", img_corners)
+    img_corners = img_corners[:27]
+    # print("img_corners-0:\n", img_corners)
 
-    calibrator = CameraCalibrator(image_size, load=False, param_file='/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/camera_params.yaml',
+    calibrator = CameraCalibrator(image_size, load=True, param_file='/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/camera_params.yaml',
                                   image_data=args.image_data, image_points=img_corners, depth=None,
                                   world_points=obj_corners,
                                   corner_width=corner[1], corner_height=corner[0], square_size=args.square
@@ -456,6 +398,7 @@ if __name__ == '__main__':
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     ret, image_points = cv2.findChessboardCorners(gray, (9, 6), None)
+    image_points = image_points[:27]
     world_points = []
     cam_points = []
 
@@ -464,22 +407,26 @@ if __name__ == '__main__':
     for image_point in image_points:
         temp_depth = depth[int(image_point[0, 1]), int(image_point[0, 0])]
         scale.append(temp_depth)
+    # print(scale[12], scale[13], scale[44], scale[53])
+    scale[12] = (scale[3] + scale[21]) / 2
+    scale[13] = (scale[4] + scale[22]) / 2
+    # print(scale[12], scale[13], scale[44], scale[53])
     s = np.array([scale]).mean()
     print("Mean depth: ", s)
 
-    # for image_point in image_points:
+    # for i in range(len(image_points)):
+    #     image_point = image_points[i]
     #     world_point = calibrator._image2world_pnp(image_point=image_point,
-    #                                               zConst_C=depth[int(image_point[0, 1]), int(image_point[0, 0])],
+    #                                               zConst_C=scale[i] ,
+    #                                               # zConst_C=depth[int(image_point[0, 1]), int(image_point[0, 0])],
     #                                               #zConst_W=np.round(s),
-    #                                               # zConst_W=6,
+    #                                               # zConst_W=461+29,
     #                                               )
     #     world_points.append(world_point)
     #     print(world_point, '\t', depth[int(image_point[0, 1]), int(image_point[0, 0])])
     # print("Using world-pnp over:........\n")
     # world_points = np.array(world_points)
-    # # world_points = (world_points - world_points[0]) / 25
-    # # print(np.round(world_points))
-    # # print(world_points)
+    # print(world_points)
     #
     # print("obj-corners:\n", obj_corners)
     # new_img_corners, _ = cv2.projectPoints(world_points, calibrator.rvec, calibrator.tvec, calibrator.matrix, calibrator.dist)
@@ -492,13 +439,13 @@ if __name__ == '__main__':
     world_points = []
     for image_point in image_points:
         world_point = calibrator.img2world(img_point=image_point[0],
-                                           # z_constS=depth[int(image_point[0, 1]), int(image_point[0, 0])] + 80,
-                                           z_constS=1.0,
+                                           z_constS=depth[int(image_point[0, 1]), int(image_point[0, 0])],
+                                           # z_constS=1.0,
                                            )
         world_points.append(world_point)
         print(world_point, '\t', "single test")
     world_points = np.array(world_points)
-    print(world_points - world_points[0])
+    # print(world_points - world_points[0])
     new_img_corners, _ = cv2.projectPoints(world_points, calibrator.rvec, calibrator.tvec, calibrator.matrix,
                                            calibrator.dist)
 
@@ -525,22 +472,5 @@ if __name__ == '__main__':
 
 
 
-    # depth = np.load('exp.npy')
-    # depth = calibrator.inpaint(depth)
-    # image = cv2.imread('exp.jpg')
-    # image_points = np.expand_dims(np.array(
-    #     [[108.9090909090909, 854.9090909090909],
-    #      [163.45454545454544, 427.6363636363636],
-    #      [1521.6363636363635, 800.3636363636363],
-    #      [1719.8181818181818, 413.09090909090907],
-    #      [1961.6363636363635, 800.3636363636363]]), axis=1)
-    # world_points = []
-    # for image_point in image_points:
-    #     world_point = calibrator._image2world_pnp(image_point=image_point,
-    #                                               zConst_C=depth[int(image_point[0, 1]), int(image_point[0, 0])])
-    #     # world_point = calibrator._image2world_affine(image_point=image_point, zConst_C=depth[int(image_point[0,1]), int(image_point[0,0])])
-    #     world_points.append(world_point)
-    # print(world_points)
-    # print(calibrator._world2image(
-    #     world_point=np.array([[215.13058890275177], [347.8963519218469], [128.21091611040472]])))
+
 
