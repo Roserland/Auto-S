@@ -666,12 +666,12 @@ def main():
     print('\n***************\n')
 
     # holes position
-    thres_holes, rect_points, rect_center_points = find_possible_holes(centri_img=empty_img, center_pos=(203, 222),
-                                                                       tailored_size=(406, 406), nums=4)
-    r_points = []
-    for item in rect_center_points:
-        r_points.append(recover_pixel_coords(points=item, center_pos=(203, 222), tailored_size=(406, 406)))
-    print(r_points)
+    # thres_holes, rect_points, rect_center_points = find_possible_holes(centri_img=empty_img, center_pos=(203, 222),
+    #                                                                    tailored_size=(406, 406), nums=4)
+    # r_points = []
+    # for item in rect_center_points:
+    #     r_points.append(recover_pixel_coords(points=item, center_pos=(203, 222), tailored_size=(406, 406)))
+    # print(r_points)
 
     # 深度摄像头与彩色摄像头之间有平移
     holes_depth = find_holes_using_depth(depth_file_path='../datas/centrifuges/color/empty-1.npy',
@@ -682,7 +682,7 @@ def main():
     thermos_for_holes = Centrifuge(color_img_path='../datas/centrifuges/color/empty-3.jpg',
                                    depth_npy_path='../datas/centrifuges/color/empty-1.npy')
 
-    thres_holes, rect_points, rect_center_points, real_points = thermos_for_holes.find_holes(nums=4, )
+    # thres_holes, rect_points, rect_center_points, real_points = thermos_for_holes.find_holes(nums=4, )
     # thres_holes, rect_points, rect_center_points, real_points = thermos_for_tubes.find_tubes(nums=4, )
 
 

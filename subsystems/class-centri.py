@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import os, yaml
+import pandas as pd
 
 class Centrifuge(object):
     def __init__(self, color_img_path, depth_npy_path,
@@ -291,23 +292,97 @@ class Centrifuge(object):
 
 
 class Realsense_Calibrator(object):
-    def __init__(self, chessboard_img_path, calibration=False):
-        self.mtx = np.array([[612.204, 0, 328.054],
-                            [0, 611.238, 234.929],
-                            [0,  0,  1]])
+    def __init__(self, chessboard_color_path=None, chessboard_depth_path=None,
+                 calibration=False):
+        # camera intrinsic matrix
+        self.c_mtx = np.array([[612.204, 0, 328.054],
+                                [0, 611.238, 234.929],
+                                [0,  0,  1]])
+        self.dist = np.array([[0, 0, 0, 0, 0]])
         self.r_mtx = np.matrix([[-0.26458059, 0.96286004, 0.05382989],
                                 [0.95508371,  0.26935109, -0.12355197],
                                 [-0.13346239, 0.0187226,  -0.99087701]])
-        self.t_mtx = np.matrix([[462.7425878 ],
-                                [ 40.05304244],
-                                [879.0725397 ]])
-        if calibration:
-            self.chess_img = cv2.imread(chessboard_img_path)
-        else:
-            self.chess_img = None
+        self.t_mtx = np.matrix([[462.7425878, ],
+                                [40.05304244, ],
+                                [879.0725397, ]])
+        self.chessboard_color_path = chessboard_color_path
+        self.chessboard_depth_path = chessboard_depth_path
+        self.calibration = calibration
 
-    def img2world(self):
-        pass
+    def img2world(self, img_point, zConst_S):
+        """
+            without distortion, just a test
+            :param img_point: 1 x 2 array
+            :param zConst_s:
+            :return:
+            """
+        if len(img_point) == 2:
+            _img_point = np.array([[img_point[0], img_point[1], 1]])
+        elif len(img_point) == 3:
+            _img_point = np.array([img_point])
+        else:
+            print("please check the image coordinates")
+            raise ValueError
+        rotation_mtx_I = np.linalg.inv(self.r_mtx)
+        camera_mtx_I = np.linalg.inv(self.c_mtx)
+        translation_mtx = np.array(self.t_mtx)
+
+        temp_mtx = np.dot(camera_mtx_I, _img_point.T) * zConst_S - translation_mtx
+
+        world_3d = rotation_mtx_I.dot(temp_mtx)
+
+        return world_3d
+
+    def re_calibration(self, c_w=6, c_h=9, square=24,
+                       real_pos_file='/Users/fanzw/PycharmProjects/Others/Auto-S-Communications/utils/carlibrations/标定new.csv',):
+        """
+        calibrating a single chessboard image whose corners have correlated real world position;
+        mainly for extrinsic parameters;
+        :return:
+        """
+        chessboard_color_img = cv2.imread(self.chessboard_color_path)
+        chessboard_depth_img = cv2.imread(self.chessboard_depth_path)
+
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        objp = np.zeros((c_w * c_h, 3), np.float32)
+        df = pd.read_csv(real_pos_file, header=None)
+        measured_obj_corners_2D = np.array(df.values[:, 12:15].astype(np.float) * 1000)
+        objp[:, :2] = np.mgrid[0:c_h, 0:c_w].T.reshape(-1, 2) * square
+        objp = measured_obj_corners_2D.reshape(objp.shape)
+
+        img = chessboard_color_img
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        ret, corners = cv2.findChessboardCorners(gray, (c_h, c_w), None)
+        print(ret)
+
+        if ret == True:
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            print('basic corner point:\n', corners2[0], corners2[1], corners2[9])
+            cv2.drawChessboardCorners(img, (c_h, c_w), corners2, ret)
+            cv2.imshow('img', img)
+            cv2.waitKey(500)
+
+            # Find the rotation and translation vectors.
+            _, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, self.c_mtx, self.dist)
+
+            r_mtx, _ = cv2.Rodrigues(rvecs)
+            t_mtx = tvecs
+            print("\nRotation matrix and Translation matrix:")
+            print(r_mtx)
+            print(t_mtx)
+
+        else:
+            print("Cannot get right return value")
+
+        self.r_mtx = r_mtx
+        self.t_mtx = t_mtx
+
+    def coor_transform(self, img_point, zConst_s):
+        if self.calibration:
+            self.re_calibration()
+
+        res = self.img2world(img_point=img_point, zConst_S=zConst_s)
+        return res.ravel()
 
 
 
@@ -315,25 +390,39 @@ class Realsense_Calibrator(object):
 
 
 def main():
-    color_img_dir = '../centri_doc/color/'
-
-    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163102.1412394.jpg')
-    tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163004.5233963.jpg')
-    tubes_img = cv2.imread('../datas/centrifuges/color/color_1604648856.jpg')
+    # color_img_dir = '../centri_doc/color/'
+    #
+    # tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163102.1412394.jpg')
+    # tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163004.5233963.jpg')
+    # tubes_img = cv2.imread('../datas/centrifuges/color/color_1604648856.jpg')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1604566870.jpg')
-    empty_img = cv2.imread('../datas/centrifuges/color/empty-3.jpg')
+    # empty_img = cv2.imread('../datas/centrifuges/color/empty-3.jpg')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
 
-    simple_tube_img = cv2.imread('../')
+    # simple_tube_img = cv2.imread('../')
 
     thermos_for_tubes = Centrifuge(color_img_path='../datas/centrifuges/color/color_1604648856.jpg',
                                    depth_npy_path='../datas/centrifuges/color/empty-1.npy')
     thermos_for_holes = Centrifuge(color_img_path='../datas/centrifuges/color/empty-3.jpg',
                                    depth_npy_path='../datas/centrifuges/color/empty-1.npy')
 
-    thres_holes, rect_points, rect_center_points, real_points = thermos_for_holes.find_holes(nums=4, )
+    # thres_holes, rect_points, rect_center_points, real_points = thermos_for_holes.find_holes(nums=4, )
     print('\n------------------------------------------------\n')
     thres_holes, rect_points, rect_center_points, real_points = thermos_for_tubes.find_tubes(nums=4, )
+    print(real_points)
+
+    coordinates_transformer = Realsense_Calibrator()
+    tubes_detected_img_pos = real_points
+    tubes_mean_height = 236.8475970086949
+    tvecs = coordinates_transformer.t_mtx
+    tubes_detected_cal_pos = []
+    for img_pos in tubes_detected_img_pos:
+        temps = coordinates_transformer.coor_transform(img_point=img_pos, zConst_s=tvecs[2] - tubes_mean_height)
+        tubes_detected_cal_pos.append(temps.ravel().tolist())
+    tubes_detected_cal_pos = np.array(tubes_detected_cal_pos)
+    print(tubes_detected_cal_pos)
+
+
 
 if __name__ == '__main__':
     main()
