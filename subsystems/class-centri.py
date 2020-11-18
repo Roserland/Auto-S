@@ -10,7 +10,7 @@ import pandas as pd
 
 class Centrifuge(object):
     def __init__(self, color, depth,
-                 crop_center=(203, 222), crop_size=(406, 406),
+                 crop_center=(203, 222), crop_size=(406, 406), world_center_pos=(106.3742, -573.5209),
                  tubes_num=4, holes_num=4,
                  tubes_bgr_thres=None, holes_bgr_thres=None, temp_img_dir='../temps/centri_temp_imgs/',
                  tubes_min_pixels=100, tubes_max_pixels=1150, hole_min_pixels=200, holes_max_pixels=480):
@@ -19,6 +19,7 @@ class Centrifuge(object):
         self.depth_img = depth
         self.crop_center = crop_center
         self.crop_size = crop_size
+        self.centri_center_real_pos = world_center_pos
         self.aim_tubes_num = tubes_num
         self.aim_holes_num = holes_num
 
@@ -248,6 +249,13 @@ class Centrifuge(object):
             real_points.append(
                 self.coords_transformer(points=item, center_pos=self.crop_center, tailored_size=self.crop_size))
         print(real_points)
+
+        # add symmetric points
+        # TODO: if there are some duplicated symmetric points in the selected list,
+        #       at this moment there is no accurate solution.
+        sym_real_points = self.symmetrical_detection(world_center_pos=self.centri_center_real_pos,
+                                                     detected_holes_center=real_points)
+        real_points = sym_real_points
 
         return thres_img, rect_points, rect_center_points, real_points
 
