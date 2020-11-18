@@ -691,10 +691,14 @@ def main():
 
 
 
+
 #TODO:
+# 0.
 # 1. When find the holes, try to set a reasonable area pixels, to filter the 'unvalid' holes
 #    which are too large or small
-# 2. Using depth information to detect holes
+# 2. Using depth information to detect holes:
+#    2.1. for the depth num is not zero,
+# 3. Prepare a rotation angle for the Franka?
 
 
 

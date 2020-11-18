@@ -1,18 +1,21 @@
+# -*- coding:utf-8 -*-
+# Author: Roserland
+# Time: 2020-11-10
+# Centrifuge part of the Auto-S Robot System
+
 import numpy as np
 import cv2
-import os, yaml
+import os, yaml, time, json
 import pandas as pd
 
 class Centrifuge(object):
-    def __init__(self, color_img_path, depth_npy_path,
+    def __init__(self, color, depth,
                  crop_center=(203, 222), crop_size=(406, 406),
                  tubes_num=4, holes_num=4,
                  tubes_bgr_thres=None, holes_bgr_thres=None, temp_img_dir='../temps/centri_temp_imgs/',
                  tubes_min_pixels=100, tubes_max_pixels=1150, hole_min_pixels=200, holes_max_pixels=480):
-        img = cv2.imread(color_img_path)
-        depth = np.load(depth_npy_path)
 
-        self.color_img = img
+        self.color_img = color
         self.depth_img = depth
         self.crop_center = crop_center
         self.crop_size = crop_size
@@ -290,6 +293,32 @@ class Centrifuge(object):
 
         return thres_img, rect_points, rect_center_points, real_points
 
+    def symmetrical_detection(self, world_center_pos, detected_holes_center: list):
+        """
+        mainly for holes detection
+        TODO: 2 methods
+            1. using image pixel position of holes and tubes, and the centrifuge center as the origin, then transfer co-
+            ordinates.
+            2. using real world (x, y, _) position, this way maybe more practicable
+        :param world_center_pos:        centrifuges' center position, [x, y, z]
+        :param detected_holes_center:   [pos1, pos2, ...], pos1 -> [x, y, z]
+        :return:
+        """
+        length = len(detected_holes_center)
+        res = []
+        _world_center_pos = np.array(world_center_pos)
+        for i in range(length):
+            res.append(detected_holes_center[i])
+            temp_coord = np.array(detected_holes_center[i])
+            opposite = _world_center_pos * 2 - temp_coord
+            res.append(opposite.tolist())
+
+        assert len(res) == length * 2
+        return res
+
+
+
+
 
 class Realsense_Calibrator(object):
     def __init__(self, chessboard_color_path=None, chessboard_depth_path=None,
@@ -298,13 +327,19 @@ class Realsense_Calibrator(object):
         self.c_mtx = np.array([[612.204, 0, 328.054],
                                 [0, 611.238, 234.929],
                                 [0,  0,  1]])
-        self.dist = np.array([[0, 0, 0, 0, 0]])
-        self.r_mtx = np.matrix([[-0.26458059, 0.96286004, 0.05382989],
-                                [0.95508371,  0.26935109, -0.12355197],
-                                [-0.13346239, 0.0187226,  -0.99087701]])
-        self.t_mtx = np.matrix([[462.7425878, ],
-                                [40.05304244, ],
-                                [879.0725397, ]])
+        self.dist = np.array([[0.0, 0.0, 0.0, 0.0, 0.0]]).reshape((1, 5))
+        # self.r_mtx = np.matrix([[-0.26458059, 0.96286004, 0.05382989],
+        #                         [0.95508371,  0.26935109, -0.12355197],
+        #                         [-0.13346239, 0.0187226,  -0.99087701]])
+        # self.t_mtx = np.matrix([[462.7425878, ],
+        #                         [40.05304244, ],
+        #                         [879.0725397, ]])
+        self.r_mtx = np.matrix([[ 0.15479108, -0.98605391,  0.06113436],
+                                [-0.98595516, -0.15811057, -0.05379093],
+                                [ 0.06270674, -0.05194938, -0.99667905]])
+        self.t_mtx = np.matrix([[-727.57927773],
+                                [  88.63541587],
+                                [ 824.67977889],])
         self.chessboard_color_path = chessboard_color_path
         self.chessboard_depth_path = chessboard_depth_path
         self.calibration = calibration
@@ -376,6 +411,18 @@ class Realsense_Calibrator(object):
 
         self.r_mtx = r_mtx
         self.t_mtx = t_mtx
+        print("re-calibrated extrinsic parameters:")
+        print(r_mtx)
+        print(t_mtx)
+
+        # store the extrinsic parameters
+        with open('./realsense_extrinsic_params.yaml', 'w') as j:
+            rvec = [[float(self.r_mtx[row][column]) \
+                     for column in range(self.r_mtx.shape[1])] for row in range(self.r_mtx.shape[0])]
+            tvec = [[float(self.t_mtx[row][column]) \
+                     for column in range(self.t_mtx.shape[1])] for row in range(self.t_mtx.shape[0])]
+            data = {'r_mtx': rvec, 't_mtx': tvec}
+            yaml.dump(data, j)
 
     def coor_transform(self, img_point, zConst_s):
         if self.calibration:
@@ -385,7 +432,66 @@ class Realsense_Calibrator(object):
         return res.ravel()
 
 
+def centrifuge_capture(device_num=0, temp_dir='../temps'):
+    """
+    拍摄图片
+    :param device_num:  摄像头设备号
+    :param temp_dir:    照片临时存储文件夹
+    :return:            拍摄的照片
+    """
+    cap = cv2.VideoCapture(0)
+    ret, frame = cap.read()
+    cap.release()
+    return frame
 
+
+    # 1. capture a image, store its color image and depth image
+    # 2. add a task:
+    #       find some holes, or want some tubes
+    #       here the tubes are the same volume just like 150ml
+    # 3. get the objects center image position
+    # 4. transfer them to real world positions
+    # 5. send the real-world position to Franka arm
+
+
+def process_once(color, depth, task_name="tubes", _nums=4, tubes_mean_height=236.85):
+    """
+    a single demo for recognition of tubes or some empty holes in the centrifuge rotor
+    :param color_img_path:
+    :param depth_npy_path:
+    :param task_name:
+    :param _nums:
+    :param tubes_mean_height:
+    :return:
+    """
+    assert task_name in ['tubes', 'holes']
+
+    thermofish = Centrifuge(color=color, depth=depth)
+    if task_name == 'tubes':    # get tubes' coordinates
+        thres_holes, rect_points, rect_center_points, real_points = thermofish.find_tubes(nums=_nums, )
+    else:                       # get holes' coordinates
+        thres_holes, rect_points, rect_center_points, real_points = thermofish.find_holes(nums=_nums, )
+
+    coordinates_transformer = Realsense_Calibrator()
+    tvecs = coordinates_transformer.t_mtx
+
+    tubes_detected_cal_pos = []
+    for img_pos in real_points:
+        temps = coordinates_transformer.coor_transform(img_point=img_pos, zConst_s=tvecs[2] - tubes_mean_height)
+        tubes_detected_cal_pos.append(temps.ravel().tolist()[0])
+    tubes_detected_cal_pos = np.array(tubes_detected_cal_pos)
+    print(tubes_detected_cal_pos)
+
+    if task_name == 'tubes':
+        tubes_detected_cal_pos[:, 2] = tubes_mean_height
+    else:
+        tubes_detected_cal_pos[:, 2] = tubes_mean_height - 8.5
+
+    return tubes_detected_cal_pos
+
+
+def coords_encoding():
+    pass
 
 
 
@@ -394,33 +500,43 @@ def main():
     #
     # tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163102.1412394.jpg')
     # tubes_img = cv2.imread('../datas/centrifuges/color/color_1603163004.5233963.jpg')
-    # tubes_img = cv2.imread('../datas/centrifuges/color/color_1604648856.jpg')
+    tubes_img = cv2.imread('../datas/centrifuges/color/4-tubes-base.jpg')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1604566870.jpg')
-    # empty_img = cv2.imread('../datas/centrifuges/color/empty-3.jpg')
+    empty_img = cv2.imread('../datas/centrifuges/color/empty-3.jpg')
+    depth = np.load('../datas/centrifuges/color/empty-1.npy')
     # empty_img = cv2.imread('../datas/centrifuges/color/color_1603162977.0726545.jpg')
 
     # simple_tube_img = cv2.imread('../')
 
-    thermos_for_tubes = Centrifuge(color_img_path='../datas/centrifuges/color/color_1604648856.jpg',
-                                   depth_npy_path='../datas/centrifuges/color/empty-1.npy')
-    thermos_for_holes = Centrifuge(color_img_path='../datas/centrifuges/color/empty-3.jpg',
-                                   depth_npy_path='../datas/centrifuges/color/empty-1.npy')
+    thermos_for_tubes = Centrifuge(color=tubes_img, depth=depth)
+    thermos_for_holes = Centrifuge(color=empty_img, depth=depth)
 
     # thres_holes, rect_points, rect_center_points, real_points = thermos_for_holes.find_holes(nums=4, )
     print('\n------------------------------------------------\n')
     thres_holes, rect_points, rect_center_points, real_points = thermos_for_tubes.find_tubes(nums=4, )
     print(real_points)
 
+    # get a coordinates transform
     coordinates_transformer = Realsense_Calibrator()
+
     tubes_detected_img_pos = real_points
     tubes_mean_height = 236.8475970086949
     tvecs = coordinates_transformer.t_mtx
     tubes_detected_cal_pos = []
     for img_pos in tubes_detected_img_pos:
         temps = coordinates_transformer.coor_transform(img_point=img_pos, zConst_s=tvecs[2] - tubes_mean_height)
-        tubes_detected_cal_pos.append(temps.ravel().tolist())
+        tubes_detected_cal_pos.append(temps.ravel().tolist()[0])
     tubes_detected_cal_pos = np.array(tubes_detected_cal_pos)
+    print('\n------------------------------------------------\n')
     print(tubes_detected_cal_pos)
+
+    print('\n------------------------------------------------\n')
+    res = process_once(color=tubes_img,
+                       depth=depth,
+                       task_name='tubes',
+                       _nums=4)
+    print('\n------------------------------------------------\n')
+    print(res)
 
 
 
